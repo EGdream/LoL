@@ -1,0 +1,3 @@
+LoL
+===
+我這走打腳本基本上就是Sida Auto Carry Revamped，只是說為了方便以SidasAutoCarryPlugin 的形式附掛其他角色的腳本，而裡面加上了SOW走打的功能，為了避免SAC和SOW兩個走打功能衝突到，我已經把SAC的走打暫時先拿掉了，這就是為什麼我說我Riven的腳本要配合這一個。簡單來說用我這腳本是為了附掛Riven的插件腳本，而走打所用的部分則是我加進去的SOW
