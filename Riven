@@ -1,0 +1,1010 @@
+--[[
+4.4.2 Riven
+
+This is script based on Sida'Riven , Bilbao & Mr Articuno ,Apple's Riven,
+and this: https://github.com/pqmailer/BoL_Scripts/blob/master/Reborn%20Plugins/Riven.lua
+
+]]
+
+if myHero.charName ~= "Riven" then return end
+
+require 'VPrediction'
+require 'SOW'
+require "AoE_Skillshot_Position"
+require "spellDmg"
+--class 'Plugin'
+
+-- Constants --
+local QREADY, WREADY, EREADY, RREADY = false, false, false, false
+local ignite, igniteReady = nil, nil
+local ts = nil
+local VP = nil
+local qOff, wOff, eOff, rOff = 0,0,0,0
+local abilitySequence = {1, 2, 3, 1, 1, 4, 1, 3, 1, 3, 4, 3, 3, 2, 2, 4, 2, 2}
+local Ranges = { Q = 260 + 100, W = 250, E = 325, R = 880 , AA = 250}
+local AnimationCancel =
+{
+	[1]=function() myHero:MoveTo(mousePos.x,mousePos.z) end, --"Move"
+	[2]=function() SendChat('/l') end, --"Laugh"
+	[3]=function() SendChat('/d') end, --"Dance"
+	[4]=function() SendChat('/t') end, --"Taunt"
+	[5]=function() SendChat('/j') end, --"joke"
+	[6]=function() end,
+}
+
+local QREADY, WREADY, EREADY, RREADY= false, false, false, false
+local BRKSlot, DFGSlot, HXGSlot, BWCSlot, TMTSlot, RAHSlot, RNDSlot, YGBSlot = nil, nil, nil, nil, nil, nil, nil, nil
+local BRKREADY, DFGREADY, HXGREADY, BWCREADY, TMTREADY, RAHREADY, RNDREADY, YGBREADY = false, false, false, false, false, false, false, false
+
+-------------
+--aq
+local QData = {Count = 0, Next = 0, Last = 0}
+local RData = {Start = 0, Up = false}
+local Passive = {Count = 0, Last = 0}
+--local Skills, Keys, Items, Data, Jungle, Helper, MyHero, Minions, Crosshair, Orbwalker = AutoCarry.Helper:GetClasses()
+
+--aq
+
+local qCount = 0
+--local target
+
+local	QREADY = (myHero:CanUseSpell(_Q) == READY)
+local	WREADY = (myHero:CanUseSpell(_W) == READY)
+local   EREADY = (myHero:CanUseSpell(_E) == READY)
+local	RREADY = (myHero:CanUseSpell(_R) == READY)
+
+
+--[[ Constants ]]--
+local qRange, qDelay, qSpeed, qWidth = 500, 0.25, 800, 60
+
+local QRadius = 112.5
+local WRange = 260
+local ERange = 800
+local RRange = 900
+local BRKid, DFGid, EXECid, YOGHid, RANOid, BWCid, HXGid = 3153, 3128, 3123, 3142, 3143, 3144, 3146
+local BRKSlot, DFGSlot, EXECSlot, YOGHSlot, RANOSlot, BWCSlot, HXGSlot = nil, nil, nil, nil, nil, nil, nil
+local ts = TargetSelector(TARGET_LOW_HP,ERange+100)
+
+--[[Global Vars]]--
+	ToInterrupt = {}
+	InteruptionSpells = {
+		{ charName = "FiddleSticks",	spellName = "Crowstorm"},
+		{ charName = "MissFortune",		spellName = "MissFortuneBulletTime"},
+		{ charName = "Nunu",			spellName = "AbsoluteZero"},
+		{ charName = "Caitlyn",			spellName = "CaitlynAceintheHole"},
+		{ charName = "Katarina", 		spellName = "KatarinaR"},
+		{ charName = "Karthus", 		spellName = "FallenOne"},
+		{ charName = "Malzahar",        spellName = "AlZaharNetherGrasp"},
+		{ charName = "Galio",           spellName = "GalioIdolOfDurand"},
+		{ charName = "Darius",          spellName = "DariusExecute"},
+		{ charName = "MonkeyKing",      spellName = "MonkeyKingSpinToWin"},
+		{ charName = "Vi",    			spellName = "ViR"},
+		{ charName = "Shen",			spellName = "ShenStandUnited"},
+		{ charName = "Urgot",			spellName = "UrgotSwap2"},
+		{ charName = "Pantheon",		spellName = "Pantheon_GrandSkyfall_Jump"},
+		{ charName = "Lucian",			spellName = "LucianR"},
+		{ charName = "Braum",			spellName = "BraumR"},
+	}
+	--[[/Global Vars]]--
+
+function PluginOnLoad()
+   
+   	print("<font color = \"#33CCCC\">Riven 4.4.2")
+	 AutoCarry.PluginMenu = scriptConfig("Riven", "Riven")
+    AutoCarry.PluginMenu:addParam("EQ", "EQ Combo", SCRIPT_PARAM_ONKEYDOWN, false, 32)
+--  AutoCarry.PluginMenu:addParam("AQ", "AQ Combo", SCRIPT_PARAM_ONKEYDOWN, false, 32)
+	AutoCarry.PluginMenu:addParam("StunCheck", "Auto W in range", SCRIPT_PARAM_ONOFF, false)
+    AutoCarry.PluginMenu:addParam("autoParry", "Auto Parry", SCRIPT_PARAM_ONOFF, true)	
+--	AutoCarry.PluginMenu:addParam("fullcombo", "QWE Combo", SCRIPT_PARAM_ONOFF, true)	
+	AutoCarry.PluginMenu:addParam("Killsteal", "KS with R2", SCRIPT_PARAM_ONOFF, true)
+	AutoCarry.PluginMenu:addParam("KS", "KS with R Combo", SCRIPT_PARAM_ONOFF, true)
+	AutoCarry.PluginMenu:addParam("Escape", "Flee to Mouse", SCRIPT_PARAM_ONKEYDOWN, false, string.byte('X'))	
+	AutoCarry.PluginMenu:addParam("qMode", "Q Mode", SCRIPT_PARAM_LIST, 1, { "Smart Q", "Mouse Q", "Enemy Q", "Custom Q" })
+	AutoCarry.PluginMenu:addParam("cstqrange", "Custom Q Mode range from enemy",SCRIPT_PARAM_SLICE, 0, -100, 200)
+	AutoCarry.PluginMenu:addParam("draw", "Draw range", SCRIPT_PARAM_ONOFF, true)
+		
+
+	initComponents()
+	AddInteruptMenu()
+	
+
+	--_PREDICTION = VPrediction()
+	--_SOW = SOW(_PREDICTION)
+	--_SOW:RegisterAfterAttackCallback(AfterAttack)
+	
+	
+end
+
+function initComponents()
+	-- VPrediction Start
+	VP = VPrediction()
+	Orbwalkeri = SOW(VP)
+	-- Target Selector
+	ts = TargetSelector(TARGET_LOW_HP,ERange+100)
+	
+	Menu = scriptConfig("Riven Laneclear & Jungleclear", "RivenBLMA")
+	
+	Menu:addSubMenu("["..myHero.charName.." - Orbwalker]", "SOWorb")
+	Orbwalkeri:LoadToMenu(Menu.SOWorb)
+	
+	Menu:addSubMenu("["..myHero.charName.." - Laneclear]", "Laneclear")
+	Menu.Laneclear:addParam("lclr", "Laneclear Key", SCRIPT_PARAM_ONKEYDOWN, false, string.byte("V"))
+	Menu.Laneclear:addParam("useClearW", "Use W in Laneclear", SCRIPT_PARAM_ONOFF, true)
+	Menu.Laneclear:addParam("useClearE", "Use E in Laneclear", SCRIPT_PARAM_ONOFF, true)
+	
+	Menu:addSubMenu("["..myHero.charName.." - Jungleclear]", "Jungleclear")
+	Menu.Jungleclear:addParam("jclr", "Jungleclear Key", SCRIPT_PARAM_ONKEYDOWN, false, string.byte("V"))
+	Menu.Jungleclear:addParam("useClearW", "Use W in Jungleclear", SCRIPT_PARAM_ONOFF, true)
+	Menu.Jungleclear:addParam("useClearE", "Use E in Jungleclear", SCRIPT_PARAM_ONOFF, true)
+	
+	Menu:addSubMenu("["..myHero.charName.." - Additionals]", "Ads")
+	Menu.Ads:addParam("cancel", "Animation Cancel", SCRIPT_PARAM_LIST, 1, { "Move","Laugh","Dance","Taunt","joke","Nothing" })
+	AddProcessSpellCallback(function(unit, spell)
+		animationCancel(unit,spell)
+	end)
+
+	ts.name = "Focus"
+
+	Skills, Keys, Items, Data, Jungle, Helper, MyHero, Minions, Crosshair, Orbwalker = AutoCarry.Helper:GetClasses()
+	enemyMinions = minionManager(MINION_ENEMY, 360, myHero, MINION_SORT_MAXHEALTH_DEC)
+	allyMinions = minionManager(MINION_ALLY, 360, myHero, MINION_SORT_MAXHEALTH_DEC)
+	jungleMinions = minionManager(MINION_JUNGLE, 360, myHero, MINION_SORT_MAXHEALTH_DEC)
+end
+
+function PluginOnTick()
+
+	if myHero:CanUseSpell(_Q) ~= READY and os.clock() > QData.Last + 1 
+	then QData.Count = 0 
+	end
+		
+	ts:update()
+	enemyMinions:update()
+	allyMinions:update()
+	jungleMinions:update()
+	CDHandler()
+	AutoFarm()
+	
+     --ULT--
+    DodajUlti()	
+
+    AutoCarry.SkillsCrosshair.range = 900
+	
+	DFGSlot, HXGSlot, BWCSlot, SheenSlot, TrinitySlot, LichBaneSlot, BRKSlot, TMTSlot, RAHSlot, RNDSlot, STDSlot = GetInventorySlotItem(3128), GetInventorySlotItem(3146), GetInventorySlotItem(3144), GetInventorySlotItem(3057), GetInventorySlotItem(3078), GetInventorySlotItem(3100), GetInventorySlotItem(3153), GetInventorySlotItem(3077), GetInventorySlotItem(3074), GetInventorySlotItem(3143), GetInventorySlotItem(3131)
+	QREADY = (myHero:CanUseSpell(_Q) == READY)
+	WREADY = (myHero:CanUseSpell(_W) == READY)
+	EREADY = (myHero:CanUseSpell(_E) == READY)
+	RREADY = (myHero:CanUseSpell(_R) == READY)
+	DFGREADY = (DFGSlot ~= nil and myHero:CanUseSpell(DFGSlot) == READY)
+	HXGREADY = (HXGSlot ~= nil and myHero:CanUseSpell(HXGSlot) == READY)
+	BWCREADY = (BWCSlot ~= nil and myHero:CanUseSpell(BWCSlot) == READY)
+	BRKREADY = (BRKSlot ~= nil and myHero:CanUseSpell(BRKSlot) == READY)
+	TMTREADY = (TMTSlot ~= nil and myHero:CanUseSpell(TMTSlot) == READY)
+	RAHREADY = (RAHSlot ~= nil and myHero:CanUseSpell(RAHSlot) == READY)
+	RNDREADY = (RNDSlot ~= nil and myHero:CanUseSpell(RNDSlot) == READY)
+	STDREADY = (STDSlot ~= nil and myHero:CanUseSpell(STDSlot) == READY)
+	IREADY = (ignite ~= nil and myHero:CanUseSpell(ignite) == READY)
+
+	TiamatSlot = GetInventorySlotItem(3077)
+	RavenousHydraSlot = GetInventorySlotItem(3074)
+
+        target = AutoCarry.GetAttackTarget()
+  		local vectorX,y,vectorZ = (Vector(myHero) - Vector(mousePos)):normalized():unpack()
+		local satchelDistance = 50
+		local posX = myHero.x + (vectorX * satchelDistance)
+		local posZ = myHero.z + (vectorZ * satchelDistance)
+			
+	if Menu.Laneclear.lclr then
+		LaneClear()
+	end
+	
+	if Menu.Jungleclear.jclr then
+		JungleClear()
+	end
+
+    if AutoCarry.PluginMenu.Escape then
+      Escape()
+    end	
+
+	if  AutoCarry.PluginMenu.StunCheck then 
+	  StunCheck() 
+	end
+
+    if AutoCarry.PluginMenu.EQ then	
+      EQ()
+	end	
+	
+	if AutoCarry.PluginMenu.Killsteal then 
+	R2() 
+	end
+
+	if AutoCarry.PluginMenu.KS and RREADY then 
+	KS() 
+	end	
+
+	E1()
+     --KS
+    if myHero:GetSpellData(_R).level ~= 0 then
+		for i=1, heroManager.iCount do
+			local enemy = heroManager:GetHero(i)
+			if enemy.team ~= myHero.team and enemy ~= nil then
+			    local PDamage = getDmg("P",enemy,myHero)
+				local ADamage = getDmg("AD",enemy,myHero)
+				local QDamage = getDmg("Q",enemy,myHero)
+     			local WDamage = getDmg("W",enemy,myHero)
+				local RDamage = getDmg("R",enemy,myHero)
+				--local F = (ADamage+QDamage+PDamage)*3+RDamage
+				local RF = ((ADamage*1.2)+PDamage+QDamage)*3+RDamage
+					if TargetValid(enemy) then
+					--KS
+					
+					if (ADamage+QDamage+PDamage)*2+ADamage > enemy.health and GetDistance(enemy) < 3000 then
+					PrintFloatText(enemy,0,"EQ combo to Kill")							
+
+					elseif (ADamage+QDamage+PDamage)*3 > enemy.health and GetDistance(enemy) < 3000 then
+					PrintFloatText(enemy,0,"3AQ to Kill")					
+		
+
+					elseif WDamage+(ADamage+QDamage+PDamage)*3 > enemy.health and GetDistance(enemy) < 3000 then
+					PrintFloatText(enemy,0,"3AQ+W to Kill")										
+					
+					elseif RF > enemy.health and GetDistance(enemy) < 3000 then
+					PrintFloatText(enemy,0,"R+3AQ to Kill")					
+					end					
+					
+				end
+			end
+		end
+	end
+			
+			
+	for i=1, heroManager.iCount do
+		local enemy = heroManager:GetHero(i)
+		if enemy.team ~= myHero.team and enemy ~= nil then	
+          if GetDistance(enemy) <= 1200 and not enemy.dead  then
+
+          end
+        end
+	end
+
+
+        --QW KS
+        for i=1, heroManager.iCount do
+			local enemy = heroManager:GetHero(i)
+			if enemy.team ~= myHero.team and enemy ~= nil then
+			    local PDamage = getDmg("P",enemy,myHero)
+				local ADamage = getDmg("AD",enemy,myHero)			
+				local QDamage = getDmg("Q",enemy,myHero)
+     			local WDamage = getDmg("W",enemy,myHero)
+				local RDamage = getDmg("R",enemy,myHero)
+					if TargetValid(enemy) then				  									
+					if PDamage+ADamage+WDamage > enemy.health and GetDistance(enemy) < WRange then
+					StunCheck()
+					end	
+					if WDamage*3  > enemy.health and GetDistance(enemy) < WRange then
+					ItemUsage(target)
+					StunCheck()
+					end						
+
+					if WDamage+ADamage+PDamage > enemy.health and GetDistance(enemy) < 600 and GetDistance(enemy) > 400 and EREADY and WREADY then                                   
+                     CastSpell(_E, enemy.x, enemy.z)
+					 ItemUsage(target)
+					 StunCheck()
+					end	
+
+
+					if WDamage+ADamage+PDamage > enemy.health and GetDistance(enemy) < 600 and GetDistance(enemy) > 400 and EREADY and WREADY then                                   
+                     CastSpell(_E, enemy.x, enemy.z)
+					 ItemUsage(target)
+					 StunCheck()
+					end	
+
+					if WDamage*3 > enemy.health and GetDistance(enemy) < 600 and GetDistance(enemy) > 400 and EREADY and WREADY then                                   
+                     CastSpell(_E, enemy.x, enemy.z)
+					 ItemUsage(target)
+					 StunCheck()
+					end						
+					
+				end
+			end
+		end		
+
+		--AQ combo
+        if (AutoCarry.MainMenu.AutoCarry or AutoCarry.MainMenu.MixedMode) then
+		for i=1, heroManager.iCount do
+		local enemy = heroManager:GetHero(i)
+		if enemy.team ~= myHero.team and enemy ~= nil then	
+          if not enemy.dead then
+--        if GetDistance(enemy) <= qRange and not enemy.dead then		  
+              AQ()
+            end
+          end		
+
+		end		
+        end			
+		
+end
+function E1()
+
+ target = AutoCarry.GetAttackTarget()
+  if target ~= nil and target.dead == false then
+    if not  EREADY and GetDistance(Target) < 700  then
+      ItemUsage(target)
+    end
+  end
+
+end
+
+function AQ()
+
+    local MovePos = Vector(myHero) + 400 * (Vector(mousePos) - Vector(myHero)):normalized()
+	local AARange = target and AARange(target)
+    local Target = Crosshair:GetTarget()    
+	--CastSpell(_Q, mousePos.x,mousePos.z)	
+    target = AutoCarry.GetAttackTarget()
+    if target ~= nil and target.dead == false then
+ 	
+	    if ValidTarget(Target) then
+		
+		local vectorX,y,vectorZ = (Vector(myHero) - Vector(mousePos)):normalized():unpack()
+		local satchelDistance = 0.000000000001
+		local posX = myHero.x + (vectorX * satchelDistance)
+		local posZ = myHero.z + (vectorZ * satchelDistance)
+		local CustomX = target.x + AutoCarry.PluginMenu.cstqrange
+		local CustomZ = target.z + AutoCarry.PluginMenu.cstqrange
+
+	    
+			if Riventricleavesound() and GetDistance(Target) < 190 and QREADY then
+				myHero:Attack(target)
+			  --DelayAction(function() myHero:Attack(Target) end, 0.08)
+			end
+			
+		
+			    if Orbwalker:IsAfterAttack() and GetTickCount() > QData.Next then
+--				if Orbwalker:IsAfterAttack() and GetTickCount() > QData.Next and GetDistance(Target) < qRange then
+				--myHero:MoveTo(posX, posZ)
+				--Orbwalkeri:DisableAttacks()
+              
+			      if AutoCarry.PluginMenu.qMode == 1 then
+					for i=1, heroManager.iCount do
+						local target = heroManager:GetHero(i)
+						if ValidTarget(target, 350) then
+							if myHero:CanUseSpell(_Q) == READY then			
+							local CastPosition,  HitChance,  Position = VP:GetLineCastPosition(target, qDelay, qWidth, qRange, qSpeed, myHero, false)
+								Orbwalkeri:DisableAttacks()
+								CastSpell(_Q, CastPosition.x, CastPosition.z)
+								SendChat("/d")
+								DelayAction(function() Orbwalker:ResetAttackTimer() end, 0.18)
+								Orbwalkeri:EnableAttacks()
+								DelayAction(function() Orbwalkeri:resetAA() end, 0.07)
+								--QData.Next =  Orbwalker:GetNextAttackTime() -100
+								if TargetHaveBuff("riventricleavesoundone", myHero) then
+								QData.Next =  Orbwalker:GetNextAttackTime() -150     -- modify this number to make your AQ speed faster
+								end
+								QData.Next =  Orbwalker:GetNextAttackTime() -320     -- modify this number to make your AQ speed faster							
+								
+								
+								DelayAction(function() myHero:Attack(target) end, 0.06)
+								DelayAction(function() myHero:MoveTo(posX, posZ) end, 0.08)
+
+							end
+						end
+					end						  
+			      end
+			  
+			      if AutoCarry.PluginMenu.qMode == 2 then
+			        CastSpell(_Q, mousePos.x,mousePos.z)
+					SendChat("/d")
+					DelayAction(function() Orbwalker:ResetAttackTimer() end, 0.2)
+					DelayAction(function() Orbwalkeri:resetAA() end, 0.18)
+                    QData.Next =  Orbwalker:GetNextAttackTime()	 		
+			      end	
+
+			      if AutoCarry.PluginMenu.qMode == 3 then
+			        CastSpell(_Q, Target.x, Target.z)
+					SendChat("/d")
+					DelayAction(function() Orbwalker:ResetAttackTimer() end, 0.2)
+					DelayAction(function() Orbwalkeri:resetAA() end, 0.18)
+					QData.Next =  Orbwalker:GetNextAttackTime() 
+			      end
+
+			      if AutoCarry.PluginMenu.qMode == 4 then
+			        CastSpell(_Q, CustomX, CustomZ)
+					SendChat("/d")
+					DelayAction(function() Orbwalker:ResetAttackTimer() end, 0.2)
+					DelayAction(function() Orbwalkeri:resetAA() end, 0.18)
+					QData.Next =  Orbwalker:GetNextAttackTime()
+			      end				  
+				
+				--[[
+                if TargetHaveBuff("riventricleavesoundone", myHero) then
+                     QData.Next = Orbwalker:GetNextAttackTime() - 150
+                     elseif TargetHaveBuff("riventricleavesoundone", myHero) then				 
+			         QData.Next = Orbwalker:GetNextAttackTime() + 100
+                     elseif TargetHaveBuff("riventricleavesoundone", myHero) then				 
+			         QData.Next = Orbwalker:GetNextAttackTime() + 100
+			        end
+				]]--
+				end
+				
+		end
+    end
+end
+
+function AARange(target)
+	return myHero.range + VP:GetHitBox(myHero) + VP:GetHitBox(target)
+end
+function InRange(target)
+	return GetDistanceSqr(target.visionPos, myHero.visionPos) < AARange(target) * AARange(target)
+end
+
+
+function CDHandler()
+	-- Spells
+	QREADY = (myHero:CanUseSpell(_Q) == READY)
+	WREADY = (myHero:CanUseSpell(_W) == READY)
+	EREADY = (myHero:CanUseSpell(_E) == READY)
+	RREADY = (myHero:CanUseSpell(_R) == READY)
+	-- Items
+	tiamatSlot = GetInventorySlotItem(3077)
+	hydraSlot = GetInventorySlotItem(3074)
+	youmuuSlot = GetInventorySlotItem(3142) 
+	bilgeSlot = GetInventorySlotItem(3144)
+	bladeSlot = GetInventorySlotItem(3153)
+	
+	tiamatReady = (tiamatSlot ~= nil and myHero:CanUseSpell(tiamatSlot) == READY)
+	hydraReady = (hydraSlot ~= nil and myHero:CanUseSpell(hydraSlot) == READY)
+	youmuuReady = (youmuuSlot ~= nil and myHero:CanUseSpell(youmuuSlot) == READY)
+	bilgeReady = (bilgeSlot ~= nil and myHero:CanUseSpell(bilgeSlot) == READY)
+	bladeReady = (bladeSlot ~= nil and myHero:CanUseSpell(bladeSlot) == READY)
+	-- Summoners
+	if myHero:GetSpellData(SUMMONER_1).name:find("SummonerDot") then
+		ignite = SUMMONER_1
+	elseif myHero:GetSpellData(SUMMONER_2).name:find("SummonerDot") then
+		ignite = SUMMONER_2
+	end
+	igniteReady = (ignite ~= nil and myHero:CanUseSpell(ignite) == READY)
+end
+
+function LaneClear()
+        local MovePos = Vector(myHero) + 400 * (Vector(mousePos) - Vector(myHero)):normalized()
+		local vectorX,y,vectorZ = (Vector(myHero) - Vector(mousePos)):normalized():unpack()
+		local satchelDistance = 50
+		local posX = myHero.x + (vectorX * satchelDistance)
+		local posZ = myHero.z + (vectorZ * satchelDistance)
+        -- myHero:MoveTo(posX, posZ)	
+
+
+   for i, target in pairs(enemyMinions.objects) do
+   
+			if Riventricleavesound()  and GetDistance(target) < 190 and QREADY then
+			myHero:Attack(target)
+			end	
+			
+		if Menu.Laneclear.useClearE and EREADY and ValidTarget(target, Ranges.E) then
+			--ItemUsage(target)
+			CastSpell(_E, target.x, target.z)
+		end
+			    if QREADY and Orbwalker:IsAfterAttack() and GetTickCount() > QData.Next and  GetDistance(target) < qRange then
+                 CastSpell(_Q, target.x, target.z)
+				 DelayAction(function() Orbwalker:ResetAttackTimer() end, 0.15)
+				 DelayAction(function() Orbwalkeri:resetAA() end, 0.25)
+								if TargetHaveBuff("riventricleavesoundone", myHero) then
+								QData.Next =  Orbwalker:GetNextAttackTime()  -150 ---150
+								end
+								QData.Next =  Orbwalker:GetNextAttackTime()  -300  --300
+			    end		
+
+	end
+	
+	if myHero:CanUseSpell(_Q) == READY then
+		for index, minion in pairs(enemyMinions.objects) do
+			if  minion.health <= getDmg("Q", minion, myHero) and GetDistance(minion)< 400 then			
+				CastSpell(_Q, minion.x, minion.z)
+				DelayAction(function() Orbwalkeri:resetAA() end, 0.25)
+				return
+			end	
+		end	
+	end
+
+	if myHero:CanUseSpell(_W) == READY then
+		for index, minion in pairs(enemyMinions.objects) do
+			if  minion.health <= getDmg("W", minion, myHero) and GetDistance(minion)< 200 then			
+				CastSpell(_W)
+				return
+			end	
+		end	
+	end 
+
+	if tiamatReady then
+		for index, minion in pairs(enemyMinions.objects) do
+			if  minion.health <= getDmg("TIAMAT", minion, myHero) and GetDistance(minion)< 200 then			
+				CastSpell(tiamatSlot)
+				return
+			end	
+		end	
+	end 
+	
+	if hydraReady then
+		for index, minion in pairs(enemyMinions.objects) do
+			if  minion.health <= getDmg("HYDRA", minion, myHero) and GetDistance(minion)< 200 then			
+				CastSpell(hydraSlot)
+				return
+			end	
+		end	
+	end 
+
+end
+
+function JungleClear()
+    local MovePos = Vector(myHero) + 400 * (Vector(mousePos) - Vector(myHero)):normalized()
+		local vectorX,y,vectorZ = (Vector(myHero) - Vector(mousePos)):normalized():unpack()
+		local satchelDistance = 50
+		local posX = myHero.x + (vectorX * satchelDistance)
+		local posZ = myHero.z + (vectorZ * satchelDistance)
+        -- myHero:MoveTo(posX, posZ)	
+
+	for i, target in pairs(jungleMinions.objects) do
+		if target ~= nil then 
+				ItemUsage(target)
+			if Riventricleavesound()  and GetDistance(target) < 190 and QREADY then
+			myHero:Attack(target)
+			end	
+	
+			    if QREADY and Orbwalker:IsAfterAttack() and GetTickCount() > QData.Next and  GetDistance(target) < qRange then
+                 CastSpell(_Q, target.x, target.z)
+				 ItemUsage(target)
+				 DelayAction(function() Orbwalkeri:resetAA() end, 0.25)	
+				 DelayAction(function() Orbwalker:ResetAttackTimer() end, 0.15)
+								if TargetHaveBuff("riventricleavesoundone", myHero) then
+								QData.Next =  Orbwalker:GetNextAttackTime() -150
+								end
+								QData.Next =  Orbwalker:GetNextAttackTime() -300
+			 
+			    end	
+
+ 				 if not QREADY and Menu.Jungleclear.useClearW and WREADY and ValidTarget(target, Ranges.W) and Orbwalker:IsAfterAttack() then
+				 ItemUsage(target)
+				 CastSpell(_W)
+				 end
+			     
+				 if not QREADY and Menu.Jungleclear.useClearE and EREADY and Orbwalker:IsAfterAttack() then
+				  CastSpell(_E, target.x, target.z)
+			     end				
+
+		end
+	end
+	
+	if myHero:CanUseSpell(_Q) == READY then
+		for index, minion in pairs(enemyMinions.objects) do
+			if  minion.health <= getDmg("Q", minion, myHero) and GetDistance(minion)< 400 then			
+				CastSpell(_Q, minion.x, minion.z)
+				return
+			end	
+		end	
+	end 	
+end
+
+function AutoFarm()
+   Target = AutoCarry.GetAttackTarget()
+--Orbwalkeri:Attack(target)
+--Orbwalkeri:CanAttack()  Orbwalker:
+--_MyHero:AttacksEnabled(canAttack)
+
+	
+   if tiamatReady then
+		for index, minion in pairs(enemyMinions.objects) do
+			if  minion.health <= getDmg("TIAMAT", minion, myHero)*0.9 and GetDistance(minion)< 150 then			
+				CastSpell(tiamatSlot)
+				return
+			end	
+		end	
+	end 
+	
+	if hydraReady then
+		for index, minion in pairs(enemyMinions.objects) do
+			if  minion.health <= getDmg("HYDRA", minion, myHero)*0.9 and GetDistance(minion)< 150 then			
+				CastSpell(hydraSlot)
+				return
+			end	
+		end	
+	end 	
+	
+end
+
+-- Auto Ignite --
+
+function HealthCheck(unit, HealthValue)
+	if unit.health > (unit.maxHealth * (HealthValue/100)) then 
+		return true
+	else
+		return false
+	end
+end
+
+function animationCancel(unit, spell)
+	if not unit.isMe then return end
+
+	if spell.name == 'RivenTriCleave' then -- _Q
+		DelayAction(function() Orbwalkeri:resetAA() end, 0.25)
+		AnimationCancel[Menu.Ads.cancel]()
+	else
+		if spell.name == 'RivenMartyr' then -- _W
+			AnimationCancel[Menu.Ads.cancel]()
+		else
+			if spell.name == 'RivenFeint' then -- _E
+				AnimationCancel[Menu.Ads.cancel]()
+			else
+				if spell.name == 'RivenFengShuiEngine' then -- _R first cast
+					AnimationCancel[Menu.Ads.cancel]()
+				else
+					if spell.name == 'rivenizunablade' then -- _R Second cast
+						AnimationCancel[Menu.Ads.cancel]()
+					end
+				end
+			end
+		end
+	end
+end
+
+function ItemUsage(target)
+
+	if DFGREADY then CastSpell(DFGSlot, target) end
+	if HXGREADY then CastSpell(HXGSlot, target) end
+	if BWCREADY then CastSpell(BWCSlot, target) end
+	if BRKREADY then CastSpell(BRKSlot, target) end
+	if TMTREADY then CastSpell(TMTSlot) end
+	if RAHREADY then CastSpell(RAHSlot) end
+	if RNDREADY then CastSpell(RNDSlot) end	
+	--[[
+	if TMTREADY and GetDistance(target) < 385 then CastSpell(TMTSlot) end
+	if RAHREADY and GetDistance(target) < 385 then CastSpell(RAHSlot) end
+	if RNDREADY and GetDistance(target) < 385 then CastSpell(RNDSlot) end
+      ]]--
+end
+
+function AddInteruptMenu()
+	Menu:addSubMenu('Interuptions', 'inter')
+		Menu.inter:addParam("inter1", "Interupt skills", SCRIPT_PARAM_ONOFF, false)
+		Menu.inter:addParam("inter2", "------------------------------", SCRIPT_PARAM_INFO, "")
+		for i, enemy in ipairs(GetEnemyHeroes()) do
+			for _, champ in pairs(InteruptionSpells) do
+				if enemy.charName == champ.charName then
+					table.insert(ToInterrupt, {charName = champ.charName, spellName = champ.spellName})
+				end
+			end
+		end
+		if #ToInterrupt > 0 then
+			for _, Inter in pairs(ToInterrupt) do
+				Menu.inter:addParam(Inter.spellName, "Stop "..Inter.charName.." "..Inter.spellName, SCRIPT_PARAM_ONOFF, true)
+			end
+		else
+			Menu.inter:addParam("bilbao", "No supported skills to interupt.", SCRIPT_PARAM_INFO, "")
+		end	
+end
+
+function PluginOnProcessSpell(unit, spell)
+  target = AutoCarry.GetAttackTarget()
+           		
+	
+	if Menu.inter.inter1 and myHero:CanUseSpell(_W) == READY then
+		if #ToInterrupt > 0 then
+			for _, Inter in pairs(ToInterrupt) do
+				if spell.name == Inter.spellName and unit.team ~= myHero.team then
+					if Menu.inter[Inter.spellName] then
+						if ValidTarget(unit, Ranges.W) and GetDistance(unit.visionPos, myHero.visionPos) < Ranges.W then
+							CastSpell(_W)
+						end
+					end
+				end
+			end
+		end
+	end
+
+----------------------------
+	
+	if AutoCarry.PluginMenu.autoParry  then
+		if unit and unit.type == myHero.type and spell.target == myHero then
+			for i=1, #Abilities do
+				if (spell.name == Abilities[i] or spell.name:find(Abilities[i]) ~= nil) then					
+					if getDmg("AD", myHero, unit) >= (myHero.maxHealth*0.01) or getDmg("AD", myHero, unit) >= (myHero.health*0.01)  then
+                        if GetDistance(target)<260 then
+						CastSpell(_W)
+						CastSpell(_E, target.x, target.z)
+						else
+						CastSpell(_E, target.x, target.z)
+						end
+					end
+				end
+			end
+		end
+	end
+
+end
+
+Abilities = {
+"GarenSlash2", "SiphoningStrikeAttack", "LeonaShieldOfDaybreakAttack", "RenektonExecute","IreliaEquilibriumStrike","ShenVorpalStar","PantheonQ", 
+"ShyvanaDoubleAttackHit", "DariusNoxianTacticsONHAttack", "TalonNoxianDiplomacyAttack", "Parley", "MissFortuneRicochetShot", "RicochetAttack", "jaxrelentlessattack", "Attack"
+}
+
+--[[	Parry	]]--
+
+function EQ()
+
+    target = AutoCarry.GetAttackTarget()
+ 
+    if target ~= nil and QREADY and target.dead == false and GetDistance(target) > 600 and GetDistance(target) < 650 then
+
+        local	QREADY = (myHero:CanUseSpell(_Q) == READY)
+        local	WREADY = (myHero:CanUseSpell(_W) == READY)
+        local   EREADY = (myHero:CanUseSpell(_E) == READY)
+        local	RREADY = (myHero:CanUseSpell(_R) == READY)
+
+					if  EREADY and QREADY then
+                     --CastSpell(_E, target.x, target.z)
+					 CastSpell(_E, target.x, target.z)
+				     ---SendChat("/d")
+					 
+					 DelayAction(function() 
+					 CastSpell(_Q, target.x, target.z) 
+					 SendChat("/d")
+					 end, 0.19)  
+					 
+                     
+	
+					end
+
+    end					
+end
+
+function Escape()
+      myHero:MoveTo(mousePos.x,mousePos.z)
+    local	QREADY = (myHero:CanUseSpell(_Q) == READY)
+    local	WREADY = (myHero:CanUseSpell(_W) == READY)
+    local   EREADY = (myHero:CanUseSpell(_E) == READY)
+    local	RREADY = (myHero:CanUseSpell(_R) == READY)
+
+					if EREADY and QREADY then
+					 CastSpell(_E, mousePos.x, mousePos.z)
+					 DelayAction(function() CastSpell(_Q, mousePos.x, mousePos.z) SendChat("/d") end, 0.21)   		
+                     
+				    elseif EREADY and not QREADY then
+					 CastSpell(_E, mousePos.x, mousePos.z)
+	                elseif not EREADY and QREADY then
+                    DelayAction(function() CastSpell(_Q, mousePos.x, mousePos.z) SendChat("/d")  end, 0.19)								 
+					end		
+		
+end
+
+function StunCheck()
+	if not myHero.dead and myHero:CanUseSpell(_W) == READY then
+		for i=1, heroManager.iCount do
+			local enemy = heroManager:GetHero(i)
+			if not enemy.dead and enemy.team ~= myHero.team and enemy ~= nil then
+				if GetDistance(enemy) < 260 then
+					--ItemUsage(target)
+					DelayAction(function()CastSpell(_W) end, 0.1)							
+				end 
+				
+			end
+		end
+	end
+end
+
+
+function R2()
+	if myHero:GetSpellData(_R).level ~= 0 and myHero:CanUseSpell(_R) == READY then
+		for i=1, heroManager.iCount do
+			local enemy = heroManager:GetHero(i)
+			if enemy.team ~= myHero.team and enemy ~= nil then
+				local RDamage = getDmg("R",enemy,myHero)*1.1
+					if TargetValid(enemy) then
+					if RDamage > enemy.health and GetDistance(enemy) < RRange and GetDistance(enemy) > 260 then
+                            if not enemy.dead then
+							CastSpell(_R, enemy.x, enemy.z)
+							CastSpell(_R, enemy.x, enemy.z)
+						end
+					
+					end
+				end
+			end
+		end
+	end
+
+	if myHero:GetSpellData(_R).level ~= 0 and myHero:CanUseSpell(_R) == READY then
+		for i=1, heroManager.iCount do
+			local enemy = heroManager:GetHero(i)
+			if enemy.team ~= myHero.team and enemy ~= nil then
+				local RDamage = getDmg("R",enemy,myHero)*1.5
+					if TargetValid(enemy) then
+					if RDamage > enemy.health and GetDistance(enemy) < 260 then
+                            if not enemy.dead then
+							CastSpell(_R, enemy.x, enemy.z)
+							CastSpell(_R, enemy.x, enemy.z)
+						end
+					
+					end
+				end
+			end
+		end
+	end	
+	
+end
+
+
+
+function KS()
+local	QREADY = (myHero:CanUseSpell(_Q) == READY)
+local	WREADY = (myHero:CanUseSpell(_W) == READY)
+local   EREADY = (myHero:CanUseSpell(_E) == READY)
+local	RREADY = (myHero:CanUseSpell(_R) == READY)
+
+
+	if myHero:GetSpellData(_R).level ~= 0 and myHero:CanUseSpell(_R) == READY and myHero:CanUseSpell(_E) == READY and not Riventricleavesound() then 
+		for i=1, heroManager.iCount do
+			local enemy = heroManager:GetHero(i)
+			if enemy.team ~= myHero.team and enemy ~= nil then
+			    local PDamage = getDmg("P",enemy,myHero)
+				local ADamage = getDmg("AD",enemy,myHero)			
+				local QDamage = getDmg("Q",enemy,myHero)
+     			local WDamage = getDmg("W",enemy,myHero)
+				local RDamage = getDmg("R",enemy,myHero)
+				local F = (ADamage+QDamage+PDamage)*3+RDamage
+				local RF = ((ADamage*1.2)+PDamage+QDamage)*3+RDamage
+					if TargetValid(enemy) then
+
+					if RDamage*0.8 > enemy.health and GetDistance(enemy) < 650 and QREADY and WREADY and EREADY and RREADY then                
+                     CastSpell(_E, target.x, target.z)
+                     ItemUsage(target)					 
+					 if TMTREADY then CastSpell(TMTSlot) end
+			         if RAHREADY then CastSpell(RAHSlot) end
+                     CastSpell(_R)
+					end
+
+					if RF > enemy.health and GetDistance(enemy) < 420 and QREADY and WREADY and EREADY and RREADY then                
+                     CastSpell(_E, target.x, target.z)
+                     ItemUsage(target)				 
+					 if TMTREADY then CastSpell(TMTSlot) end
+			         if RAHREADY then CastSpell(RAHSlot) end
+                     CastSpell(_R)
+					end					
+					
+	
+					if WDamage+RDamage > enemy.health and GetDistance(enemy) < 260 and WREADY and RREADY then                                                        
+					 StunCheck()
+					 CastSpell(_R)			 
+					end	
+                  
+					-- ((myHero.health / myHero.maxHealth) < (Target.health / Target.maxHealth))
+
+					if F > enemy.health and GetDistance(enemy) < 430 and QREADY and WREADY and EREADY and RREADY then                                   
+                     CastSpell(_E, target.x, target.z)
+					 ItemUsage(target)
+					 DelayAction(function() CastSpell(_R) end, 0.08)
+					 DelayAction(function() CastSpell(_R) end, 0.18)
+					 DelayAction(function() CastSpell(_R) end, 0.25)
+					 DelayAction(function() CastSpell(_R) end, 0.3)
+
+			 
+				 
+					end	
+					
+				end
+			end
+		end
+	end
+end
+
+
+
+function TargetValid(target)
+	if target ~= nil and target.dead == false and target.team == TEAM_ENEMY and target.visible == true then
+		return true
+	else
+		return false
+	end
+end
+
+--[[
+function Plugin:GetQRadius()
+	if RData.Up then
+		if QData.Count == 2 then
+			return 112.5
+		else
+			return 150
+		end
+	else
+		if QData.Count == 2 then
+			return 200
+		else
+			return 162.5
+		end
+	end
+end
+]]--
+
+ function OnAnimation(unit,animation)   
+ 
+	if unit.isMe and animation:find("Spell1a") then 
+		qCount = 1
+	elseif unit.isMe and animation:find("Spell1b") then 
+		qCount = 2
+	elseif unit.isMe and animation:find("Spell1c") then 
+		qCount = 3
+	end
+	
+end
+
+
+function DodajUlti()
+    if myHero.level == 6 or myHero.level == 11 or myHero.level == 16 then
+      LevelSpell(_R)
+    end
+end
+
+function PluginOnGainBuff(unit, buff) 
+	if unit.isMe then
+		if buff.name == "rivenpassiveaaboost" then
+			Passive.Count = buff.stack
+			Passive.Last = GetTickCount()
+		elseif buff.name == "RivenFengShuiEngine" then
+			RData.Start = os.clock()
+			RData.Up = true
+		elseif buff.name == "riventricleavesoundone" then
+			DelayAction(function() Orbwalker:ResetAttackTimer() end, 0.15)
+			QData.Count = 1
+			QData.Last = os.clock()
+			
+		elseif buff.name == "riventricleavesoundtwo" then
+			DelayAction(function() Orbwalker:ResetAttackTimer() end, 0.15)
+			QData.Count = 2
+			QData.Last = os.clock()
+			
+		elseif buff.name == "riventricleavesoundthree" then
+			QData.Count = 3
+			QData.Last = os.clock()
+		end
+	end
+end 
+function PluginOnUpdateBuff(unit, buff)
+	if unit.isMe then
+		if buff.name == "rivenpassiveaaboost" then
+			Passive.Count = buff.stack
+			Passive.Last = GetTickCount()
+		end
+	end
+end
+function PluginOnLoseBuff(unit, buff)
+	if unit.isMe then
+		if buff.name == "rivenpassiveaaboost" then
+			Passive.Count = 0
+			Passive.Last = GetTickCount()
+		elseif buff.name == "RivenFengShuiEngine" then
+			RData.Up = false
+		end
+	end
+end
+
+function Riventricleavesound()
+   return TargetHaveBuff("riventricleavesoundone", myHero) or TargetHaveBuff("riventricleavesoundtwo", myHero) or TargetHaveBuff("riventricleavesoundthree", myHero)
+end
+
+function PluginOnDraw()
+
+    if AutoCarry.PluginMenu.draw then
+	if myHero:CanUseSpell(_Q) == READY and myHero:CanUseSpell(_E) == READY then
+	DrawCircle(myHero.x, myHero.y, myHero.z, 600, 0xFF0000)
+	DrawCircle(myHero.x, myHero.y, myHero.z, 650, 0xFF0000)
+    else
+	DrawCircle(myHero.x, myHero.y, myHero.z, 600, 0x992D3D)
+	DrawCircle(myHero.x, myHero.y, myHero.z, 650, 0x992D3D)
+	end	
+	DrawCircle(myHero.x, myHero.y, myHero.z, 190, 0x992D3D)
+	if myHero:CanUseSpell(_E) == READY then
+	DrawCircle(myHero.x, myHero.y, myHero.z, 400, 0x003C9D)
+	end
+	end
+end
+
+--AutoCarry.CanMove = false
+ --TargetHaveBuff("rivenpassiveaaboost", myHero)
+ --TargetHaveBuff("riventricleavesoundtwo", myHero)
